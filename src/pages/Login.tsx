@@ -11,8 +11,8 @@ import Navigation from "@/components/Navigation";
 import { Package, Lock } from "lucide-react";
 
 const Login = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("admin@trackingsystem.com");
+  const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -48,7 +48,7 @@ const Login = () => {
             <div className="inline-flex items-center justify-center p-4 rounded-full bg-blue-50 mb-4">
               <Package className="h-8 w-8 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold mb-2">Admin Login</h1>
+            <h1 className="text-2xl font-bold mb-2">Tracking System Login</h1>
             <p className="text-muted-foreground">
               Sign in to access the admin dashboard
             </p>
@@ -63,7 +63,7 @@ const Login = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@example.com"
+                  placeholder="admin@trackingsystem.com"
                   required
                 />
               </div>
@@ -92,7 +92,12 @@ const Login = () => {
             
             <div className="mt-6 pt-6 border-t text-center text-sm text-muted-foreground">
               <p>
-                For demo purposes: Use admin@example.com / password123
+                Login credentials:<br/>
+                Email: admin@trackingsystem.com<br/>
+                Password: admin123
+              </p>
+              <p className="mt-2 text-xs">
+                Note: You will need to create this user in your Firebase Authentication console
               </p>
             </div>
           </div>
