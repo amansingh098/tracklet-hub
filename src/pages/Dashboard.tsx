@@ -19,6 +19,13 @@ import {
   TabsList,
   TabsTrigger
 } from "@/components/ui/tabs";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { toast } from "sonner";
 import Navigation from "@/components/Navigation";
 import StatusBadge from "@/components/StatusBadge";
@@ -26,16 +33,35 @@ import {
   getAllOrders,
   getOrderByTrackingId,
   createOrder,
-  updateOrderStatus 
+  updateOrderStatus,
+  updatePaymentStatus,
+  getDashboardMetrics 
 } from "@/lib/orderService";
-import { Order, OrderStatus } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
-import { PackagePlus, LogOut, ClipboardList, Search } from "lucide-react";
+import { Order, OrderStatus, PaymentStatus, DashboardMetrics } from "@/lib/types";
+import { formatDate, formatCurrency } from "@/lib/utils";
+import { 
+  PackagePlus, 
+  LogOut, 
+  ClipboardList, 
+  Search, 
+  TrendingUp, 
+  Package, 
+  Truck, 
+  DollarSign, 
+  Clock, 
+  CreditCard, 
+  Wallet, 
+  Receipt, 
+  BarChart, 
+  FileCheck
+} from "lucide-react";
 
 const Dashboard = () => {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("orders");
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("overview");
   const navigate = useNavigate();
 
   // Form states
@@ -52,6 +78,9 @@ const Dashboard = () => {
     receiverAddress: "",
     packageDescription: "",
     weight: 1,
+    amount: 0,
+    paymentMethod: "cash",
+    transactionId: "",
   });
   
   // Status update form
@@ -59,6 +88,10 @@ const Dashboard = () => {
   const [newStatus, setNewStatus] = useState<OrderStatus>("processing");
   const [statusLocation, setStatusLocation] = useState("");
   const [statusNote, setStatusNote] = useState("");
+  
+  // Payment update form
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("unpaid");
+  const [paymentTransactionId, setPaymentTransactionId] = useState("");
 
   useEffect(() => {
     // Check authentication status
@@ -69,6 +102,7 @@ const Dashboard = () => {
       } else {
         // Load orders if authenticated
         loadOrders();
+        loadDashboardMetrics();
       }
     });
 
@@ -85,6 +119,19 @@ const Dashboard = () => {
       toast.error("Failed to load orders");
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const loadDashboardMetrics = async () => {
+    setMetricsLoading(true);
+    try {
+      const dashboardMetrics = await getDashboardMetrics();
+      setMetrics(dashboardMetrics);
+    } catch (error) {
+      console.error("Error loading metrics:", error);
+      toast.error("Failed to load dashboard metrics");
+    } finally {
+      setMetricsLoading(false);
     }
   };
 
@@ -126,9 +173,10 @@ const Dashboard = () => {
       !newOrder.customerEmail ||
       !newOrder.senderAddress ||
       !newOrder.receiverAddress ||
-      !newOrder.packageDescription
+      !newOrder.packageDescription ||
+      newOrder.amount < 0
     ) {
-      toast.error("Please fill in all required fields");
+      toast.error("Please fill in all required fields with valid values");
       return;
     }
     
@@ -138,6 +186,7 @@ const Dashboard = () => {
       const createdOrder = await createOrder({
         ...newOrder,
         weight: Number(newOrder.weight),
+        amount: Number(newOrder.amount),
       });
       
       toast.success(`Order created with tracking ID: ${createdOrder.trackingId}`);
@@ -151,10 +200,14 @@ const Dashboard = () => {
         receiverAddress: "",
         packageDescription: "",
         weight: 1,
+        amount: 0,
+        paymentMethod: "cash",
+        transactionId: "",
       });
       
-      // Refresh orders list
+      // Refresh orders and metrics
       loadOrders();
+      loadDashboardMetrics();
       
       // Switch to orders tab
       setActiveTab("orders");
@@ -195,8 +248,9 @@ const Dashboard = () => {
       setStatusLocation("");
       setStatusNote("");
       
-      // Refresh orders
+      // Refresh orders and metrics
       loadOrders();
+      loadDashboardMetrics();
       
       // If this was from search, refresh the search result
       if (searchResults && searchResults.id === selectedOrderId) {
@@ -206,6 +260,45 @@ const Dashboard = () => {
     } catch (error) {
       console.error("Error updating status:", error);
       toast.error("Failed to update order status");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleUpdatePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedOrderId) {
+      toast.error("Please select an order");
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      await updatePaymentStatus(
+        selectedOrderId,
+        paymentStatus,
+        paymentTransactionId || undefined
+      );
+      
+      toast.success("Payment status updated successfully");
+      
+      // Reset form
+      setPaymentTransactionId("");
+      
+      // Refresh orders and metrics
+      loadOrders();
+      loadDashboardMetrics();
+      
+      // If this was from search, refresh the search result
+      if (searchResults && searchResults.id === selectedOrderId) {
+        const updatedOrder = await getOrderByTrackingId(searchResults.trackingId);
+        setSearchResults(updatedOrder);
+      }
+    } catch (error) {
+      console.error("Error updating payment status:", error);
+      toast.error("Failed to update payment status");
     } finally {
       setLoading(false);
     }
@@ -225,12 +318,16 @@ const Dashboard = () => {
     const { name, value } = e.target;
     setNewOrder(prev => ({ ...prev, [name]: value }));
   };
+  
+  const handleSelectChange = (name: string, value: string) => {
+    setNewOrder(prev => ({ ...prev, [name]: value }));
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
       <Navigation />
       
-      <main className="flex-1 pt-16 pb-10">
+      <main className="flex-1 pt-16 pb-10 bg-gray-50">
         <div className="container px-4 py-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
             <div>
@@ -247,11 +344,207 @@ const Dashboard = () => {
           </div>
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList className="grid w-full md:w-auto grid-cols-3">
-              <TabsTrigger value="orders">All Orders</TabsTrigger>
-              <TabsTrigger value="create">Create Order</TabsTrigger>
+            <TabsList className="grid w-full md:w-auto grid-cols-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="orders">Orders</TabsTrigger>
+              <TabsTrigger value="create">New Order</TabsTrigger>
               <TabsTrigger value="update">Update Status</TabsTrigger>
             </TabsList>
+            
+            <TabsContent value="overview" className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center text-lg font-medium">
+                      <Package className="mr-2 h-4 w-4 text-primary" />
+                      Total Orders
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      {metricsLoading ? "..." : metrics?.totalOrders || 0}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      All time orders
+                    </p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center text-lg font-medium">
+                      <DollarSign className="mr-2 h-4 w-4 text-green-500" />
+                      Total Revenue
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-green-600">
+                      {metricsLoading ? "..." : formatCurrency(metrics?.totalRevenue || 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      From all completed deliveries
+                    </p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center text-lg font-medium">
+                      <Truck className="mr-2 h-4 w-4 text-blue-500" />
+                      In Transit
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-blue-600">
+                      {metricsLoading ? "..." : metrics?.inTransitOrders || 0}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Active shipments
+                    </p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center text-lg font-medium">
+                      <Clock className="mr-2 h-4 w-4 text-orange-500" />
+                      Avg. Delivery Time
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-orange-600">
+                      {metricsLoading 
+                        ? "..." 
+                        : metrics?.averageDeliveryTime 
+                          ? metrics.averageDeliveryTime.toFixed(1) 
+                          : "0"} days
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Based on completed deliveries
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="text-xl">Recent Orders</CardTitle>
+                    <CardDescription>
+                      Latest orders in the system
+                    </CardDescription>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    {loading ? (
+                      <div className="text-center py-6">
+                        <p>Loading orders...</p>
+                      </div>
+                    ) : orders.length === 0 ? (
+                      <div className="text-center py-6">
+                        <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">No orders found</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left">
+                              <th className="pb-3 font-medium">Tracking ID</th>
+                              <th className="pb-3 font-medium">Customer</th>
+                              <th className="pb-3 font-medium">Amount</th>
+                              <th className="pb-3 font-medium">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {orders.slice(0, 5).map((order) => (
+                              <tr key={order.id} className="hover:bg-blue-50/40 transition-colors">
+                                <td className="py-3">{order.trackingId}</td>
+                                <td className="py-3">{order.customerName}</td>
+                                <td className="py-3">{formatCurrency(order.amount || 0)}</td>
+                                <td className="py-3">
+                                  <StatusBadge status={order.status} />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-xl">Order Status</CardTitle>
+                    <CardDescription>
+                      Current order status breakdown
+                    </CardDescription>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    {metricsLoading ? (
+                      <div className="text-center py-6">
+                        <p>Loading metrics...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Pending</span>
+                            <span className="font-medium">{metrics?.pendingOrders || 0}</span>
+                          </div>
+                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-yellow-400 rounded-full" 
+                              style={{ 
+                                width: metrics && metrics.totalOrders > 0 
+                                  ? `${(metrics.pendingOrders / metrics.totalOrders) * 100}%` 
+                                  : '0%' 
+                              }}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">In Transit</span>
+                            <span className="font-medium">{metrics?.inTransitOrders || 0}</span>
+                          </div>
+                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-500 rounded-full" 
+                              style={{ 
+                                width: metrics && metrics.totalOrders > 0 
+                                  ? `${(metrics.inTransitOrders / metrics.totalOrders) * 100}%` 
+                                  : '0%' 
+                              }}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Delivered</span>
+                            <span className="font-medium">{metrics?.deliveredOrders || 0}</span>
+                          </div>
+                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-green-500 rounded-full" 
+                              style={{ 
+                                width: metrics && metrics.totalOrders > 0 
+                                  ? `${(metrics.deliveredOrders / metrics.totalOrders) * 100}%` 
+                                  : '0%' 
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
             
             <TabsContent value="orders" className="space-y-4">
               <div className="glass-morphism rounded-xl p-6">
@@ -279,6 +572,8 @@ const Dashboard = () => {
                           <th className="pb-3 font-medium">Tracking ID</th>
                           <th className="pb-3 font-medium">Customer</th>
                           <th className="pb-3 font-medium">Date</th>
+                          <th className="pb-3 font-medium">Amount</th>
+                          <th className="pb-3 font-medium">Payment</th>
                           <th className="pb-3 font-medium">Status</th>
                         </tr>
                       </thead>
@@ -288,6 +583,20 @@ const Dashboard = () => {
                             <td className="py-3">{order.trackingId}</td>
                             <td className="py-3">{order.customerName}</td>
                             <td className="py-3">{formatDate(order.createdAt)}</td>
+                            <td className="py-3">{formatCurrency(order.amount || 0)}</td>
+                            <td className="py-3">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                order.paymentStatus === 'paid' 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : order.paymentStatus === 'partially_paid'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : order.paymentStatus === 'refunded'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {order.paymentStatus}
+                              </span>
+                            </td>
                             <td className="py-3">
                               <StatusBadge status={order.status} />
                             </td>
@@ -401,6 +710,59 @@ const Dashboard = () => {
                     </div>
                   </div>
                   
+                  <div className="pt-2 border-t">
+                    <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide mb-4">Payment Information</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="amount">Delivery Fee</Label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                          <Input
+                            id="amount"
+                            name="amount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="pl-8"
+                            value={newOrder.amount}
+                            onChange={handleInputChange}
+                            required
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="paymentMethod">Payment Method</Label>
+                        <Select 
+                          value={newOrder.paymentMethod} 
+                          onValueChange={(value) => handleSelectChange("paymentMethod", value)}
+                        >
+                          <SelectTrigger id="paymentMethod">
+                            <SelectValue placeholder="Select payment method" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">Cash</SelectItem>
+                            <SelectItem value="credit_card">Credit Card</SelectItem>
+                            <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                            <SelectItem value="paypal">PayPal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="transactionId">Transaction ID (Optional)</Label>
+                        <Input
+                          id="transactionId"
+                          name="transactionId"
+                          value={newOrder.transactionId}
+                          onChange={handleInputChange}
+                          placeholder="For electronic payments"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div className="pt-4 flex justify-end">
                     <Button type="submit" disabled={loading}>
                       {loading ? "Creating..." : "Create Order"}
@@ -440,7 +802,20 @@ const Dashboard = () => {
                           {searchResults.trackingId} • Created {formatDate(searchResults.createdAt)}
                         </p>
                       </div>
-                      <StatusBadge status={searchResults.status} />
+                      <div className="flex flex-col items-end gap-1">
+                        <StatusBadge status={searchResults.status} />
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          searchResults.paymentStatus === 'paid' 
+                            ? 'bg-green-100 text-green-800' 
+                            : searchResults.paymentStatus === 'partially_paid'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : searchResults.paymentStatus === 'refunded'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {searchResults.paymentStatus || 'unpaid'} - {formatCurrency(searchResults.amount || 0)}
+                        </span>
+                      </div>
                     </div>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
@@ -456,82 +831,154 @@ const Dashboard = () => {
                       <p>
                         <span className="text-muted-foreground">Weight:</span> {searchResults.weight} kg
                       </p>
+                      {searchResults.transactionId && (
+                        <p>
+                          <span className="text-muted-foreground">Transaction ID:</span> {searchResults.transactionId}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
               
-              <div className="glass-morphism rounded-xl p-6">
-                <h2 className="text-xl font-medium mb-6">Update Order Status</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="glass-morphism rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <Truck className="h-5 w-5 text-primary" />
+                    <h2 className="text-xl font-medium">Update Status</h2>
+                  </div>
+                  
+                  <form onSubmit={handleUpdateStatus} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="orderId">Select Order</Label>
+                      <Select 
+                        value={selectedOrderId} 
+                        onValueChange={setSelectedOrderId}
+                      >
+                        <SelectTrigger id="orderId">
+                          <SelectValue placeholder="Select an order" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {orders.map((order) => (
+                            <SelectItem key={order.id} value={order.id || ""}>
+                              {order.trackingId} - {order.customerName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="status">New Status</Label>
+                      <Select 
+                        value={newStatus} 
+                        onValueChange={(value) => setNewStatus(value as OrderStatus)}
+                      >
+                        <SelectTrigger id="status">
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="processing">Processing</SelectItem>
+                          <SelectItem value="shipped">Shipped</SelectItem>
+                          <SelectItem value="in_transit">In Transit</SelectItem>
+                          <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
+                          <SelectItem value="delivered">Delivered</SelectItem>
+                          <SelectItem value="failed_delivery">Failed Delivery</SelectItem>
+                          <SelectItem value="returned">Returned</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="location">Location (Optional)</Label>
+                      <Input
+                        id="location"
+                        value={statusLocation}
+                        onChange={(e) => setStatusLocation(e.target.value)}
+                        placeholder="e.g., New York Distribution Center"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="note">Note (Optional)</Label>
+                      <Input
+                        id="note"
+                        value={statusNote}
+                        onChange={(e) => setStatusNote(e.target.value)}
+                        placeholder="e.g., Package received in good condition"
+                      />
+                    </div>
+                    
+                    <div className="pt-2">
+                      <Button type="submit" disabled={loading || !selectedOrderId}>
+                        {loading ? "Updating..." : "Update Status"}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
                 
-                <form onSubmit={handleUpdateStatus} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="orderId">Select Order</Label>
-                    <Select 
-                      value={selectedOrderId} 
-                      onValueChange={setSelectedOrderId}
-                    >
-                      <SelectTrigger id="orderId">
-                        <SelectValue placeholder="Select an order" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {orders.map((order) => (
-                          <SelectItem key={order.id} value={order.id || ""}>
-                            {order.trackingId} - {order.customerName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <div className="glass-morphism rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <CreditCard className="h-5 w-5 text-primary" />
+                    <h2 className="text-xl font-medium">Update Payment</h2>
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="status">New Status</Label>
-                    <Select 
-                      value={newStatus} 
-                      onValueChange={(value) => setNewStatus(value as OrderStatus)}
-                    >
-                      <SelectTrigger id="status">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="processing">Processing</SelectItem>
-                        <SelectItem value="shipped">Shipped</SelectItem>
-                        <SelectItem value="in_transit">In Transit</SelectItem>
-                        <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
-                        <SelectItem value="delivered">Delivered</SelectItem>
-                        <SelectItem value="failed_delivery">Failed Delivery</SelectItem>
-                        <SelectItem value="returned">Returned</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="location">Location (Optional)</Label>
-                    <Input
-                      id="location"
-                      value={statusLocation}
-                      onChange={(e) => setStatusLocation(e.target.value)}
-                      placeholder="e.g., New York Distribution Center"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="note">Note (Optional)</Label>
-                    <Input
-                      id="note"
-                      value={statusNote}
-                      onChange={(e) => setStatusNote(e.target.value)}
-                      placeholder="e.g., Package received in good condition"
-                    />
-                  </div>
-                  
-                  <div className="pt-2">
-                    <Button type="submit" disabled={loading || !selectedOrderId}>
-                      {loading ? "Updating..." : "Update Status"}
-                    </Button>
-                  </div>
-                </form>
+                  <form onSubmit={handleUpdatePayment} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="orderIdPayment">Select Order</Label>
+                      <Select 
+                        value={selectedOrderId} 
+                        onValueChange={setSelectedOrderId}
+                      >
+                        <SelectTrigger id="orderIdPayment">
+                          <SelectValue placeholder="Select an order" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {orders.map((order) => (
+                            <SelectItem key={order.id} value={order.id || ""}>
+                              {order.trackingId} - {order.customerName} - {formatCurrency(order.amount || 0)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentStatus">Payment Status</Label>
+                      <Select 
+                        value={paymentStatus} 
+                        onValueChange={(value) => setPaymentStatus(value as PaymentStatus)}
+                      >
+                        <SelectTrigger id="paymentStatus">
+                          <SelectValue placeholder="Select payment status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unpaid">Unpaid</SelectItem>
+                          <SelectItem value="partially_paid">Partially Paid</SelectItem>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="refunded">Refunded</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="transactionId">Transaction ID (Optional)</Label>
+                      <Input
+                        id="paymentTransactionId"
+                        value={paymentTransactionId}
+                        onChange={(e) => setPaymentTransactionId(e.target.value)}
+                        placeholder="e.g., TXN123456789"
+                      />
+                    </div>
+                    
+                    <div className="pt-2">
+                      <Button type="submit" disabled={loading || !selectedOrderId}>
+                        {loading ? "Updating..." : "Update Payment"}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </TabsContent>
           </Tabs>

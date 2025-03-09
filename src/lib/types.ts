@@ -14,6 +14,11 @@ export interface Order {
   updatedAt: Date;
   estimatedDelivery: Date;
   statusHistory: StatusUpdate[];
+  // Payment information
+  amount: number;
+  paymentStatus: PaymentStatus;
+  paymentMethod?: string;
+  transactionId?: string;
 }
 
 export type OrderStatus = 
@@ -26,9 +31,25 @@ export type OrderStatus =
   | "failed_delivery" 
   | "returned";
 
+export type PaymentStatus = 
+  | "unpaid"
+  | "paid"
+  | "partially_paid"
+  | "refunded";
+
 export interface StatusUpdate {
   status: OrderStatus;
   timestamp: Date;
   location?: string;
   note?: string;
+}
+
+// Dashboard metrics interface
+export interface DashboardMetrics {
+  totalOrders: number;
+  totalRevenue: number;
+  pendingOrders: number;
+  deliveredOrders: number;
+  inTransitOrders: number;
+  averageDeliveryTime: number;
 }

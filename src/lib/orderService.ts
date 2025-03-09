@@ -14,7 +14,7 @@ import {
   setDoc
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { Order, OrderStatus, StatusUpdate } from "./types";
+import { Order, OrderStatus, StatusUpdate, PaymentStatus, DashboardMetrics } from "./types";
 import { generateTrackingId, getEstimatedDelivery } from "./utils";
 import { toast } from "sonner";
 
@@ -36,7 +36,7 @@ const convertOrder = (doc: any): Order => {
   };
 };
 
-export const createOrder = async (orderData: Omit<Order, 'trackingId' | 'status' | 'createdAt' | 'updatedAt' | 'estimatedDelivery' | 'statusHistory'>): Promise<Order> => {
+export const createOrder = async (orderData: Omit<Order, 'trackingId' | 'status' | 'createdAt' | 'updatedAt' | 'estimatedDelivery' | 'statusHistory' | 'paymentStatus'>): Promise<Order> => {
   try {
     const trackingId = generateTrackingId();
     const now = new Date();
@@ -48,6 +48,11 @@ export const createOrder = async (orderData: Omit<Order, 'trackingId' | 'status'
       note: "Order received and pending processing",
     };
     
+    // Set default payment status if not provided
+    const paymentStatus: PaymentStatus = orderData.amount > 0 ? 
+      (orderData.transactionId ? "paid" : "unpaid") : 
+      "unpaid";
+    
     const newOrder: Omit<Order, 'id'> = {
       ...orderData,
       trackingId,
@@ -56,6 +61,7 @@ export const createOrder = async (orderData: Omit<Order, 'trackingId' | 'status'
       updatedAt: now,
       estimatedDelivery,
       statusHistory: [initialStatusUpdate],
+      paymentStatus,
     };
     
     // Use server timestamp for more accuracy
@@ -185,6 +191,89 @@ export const updateOrderStatus = async (
   } catch (error) {
     console.error("Error updating order status:", error);
     toast.error("Failed to update order status in database");
+    throw error;
+  }
+};
+
+export const updatePaymentStatus = async (
+  orderId: string,
+  paymentStatus: PaymentStatus,
+  transactionId?: string
+): Promise<Order | null> => {
+  try {
+    const docRef = doc(db, ORDERS_COLLECTION, orderId);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      toast.error("Order not found in database");
+      return null;
+    }
+    
+    const updateData: any = {
+      paymentStatus,
+      updatedAt: serverTimestamp(),
+    };
+    
+    if (transactionId) {
+      updateData.transactionId = transactionId;
+    }
+    
+    await updateDoc(docRef, updateData);
+    
+    console.log(`Updated order ${orderId} payment status to ${paymentStatus}`);
+    
+    const updatedDocSnap = await getDoc(docRef);
+    return convertOrder(updatedDocSnap);
+  } catch (error) {
+    console.error("Error updating payment status:", error);
+    toast.error("Failed to update payment status in database");
+    throw error;
+  }
+};
+
+export const getDashboardMetrics = async (): Promise<DashboardMetrics> => {
+  try {
+    const orders = await getAllOrders();
+    
+    const totalOrders = orders.length;
+    const totalRevenue = orders.reduce((sum, order) => sum + (order.amount || 0), 0);
+    
+    const pendingOrders = orders.filter(order => 
+      ["pending", "processing"].includes(order.status)).length;
+    
+    const deliveredOrders = orders.filter(order => 
+      order.status === "delivered").length;
+    
+    const inTransitOrders = orders.filter(order => 
+      ["shipped", "in_transit", "out_for_delivery"].includes(order.status)).length;
+    
+    // Calculate average delivery time for delivered orders
+    const deliveredOrdersWithDuration = orders
+      .filter(order => order.status === "delivered")
+      .map(order => {
+        const deliveredUpdate = order.statusHistory.find(update => update.status === "delivered");
+        if (!deliveredUpdate) return null;
+        
+        const deliveryDuration = deliveredUpdate.timestamp.getTime() - order.createdAt.getTime();
+        return deliveryDuration / (1000 * 60 * 60 * 24); // Convert to days
+      })
+      .filter((duration): duration is number => duration !== null);
+    
+    const averageDeliveryTime = deliveredOrdersWithDuration.length > 0
+      ? deliveredOrdersWithDuration.reduce((sum, duration) => sum + duration, 0) / deliveredOrdersWithDuration.length
+      : 0;
+    
+    return {
+      totalOrders,
+      totalRevenue,
+      pendingOrders,
+      deliveredOrders,
+      inTransitOrders,
+      averageDeliveryTime
+    };
+  } catch (error) {
+    console.error("Error calculating dashboard metrics:", error);
+    toast.error("Failed to calculate dashboard metrics");
     throw error;
   }
 };

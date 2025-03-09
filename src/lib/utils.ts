@@ -1,66 +1,53 @@
-
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-import { OrderStatus } from "./types";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-export function generateTrackingId(): string {
-  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const prefix = "TRK";
-  let result = prefix;
-  
-  for (let i = 0; i < 9; i++) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  
-  return result;
-}
-
+// Format a date
 export function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    year: 'numeric',
   }).format(date);
 }
 
-export function getStatusColor(status: OrderStatus): string {
-  switch (status) {
-    case "pending":
-      return "bg-yellow-50 text-yellow-700 border-yellow-100";
-    case "processing":
-      return "bg-blue-50 text-blue-700 border-blue-100";
-    case "shipped":
-      return "bg-indigo-50 text-indigo-700 border-indigo-100";
-    case "in_transit":
-      return "bg-purple-50 text-purple-700 border-purple-100";
-    case "out_for_delivery":
-      return "bg-orange-50 text-orange-700 border-orange-100";
-    case "delivered":
-      return "bg-green-50 text-green-700 border-green-100";
-    case "failed_delivery":
-      return "bg-red-50 text-red-700 border-red-100";
-    case "returned":
-      return "bg-gray-50 text-gray-700 border-gray-100";
-    default:
-      return "bg-gray-50 text-gray-700 border-gray-100";
+// Format currency
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  }).format(amount);
+}
+
+// Generate a random tracking ID
+export function generateTrackingId(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  
+  // First 2 characters are always letters
+  for (let i = 0; i < 2; i++) {
+    result += chars.charAt(Math.floor(Math.random() * 26));
   }
-}
-
-export function getStatusLabel(status: OrderStatus): string {
-  return status
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-}
-
-export function getEstimatedDelivery(createdAt: Date): Date {
-  const result = new Date(createdAt);
-  result.setDate(result.getDate() + Math.floor(Math.random() * 3) + 3); // Random between 3-5 days
+  
+  result += '-';
+  
+  // Next 6 characters are numbers
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * 10) + 26);
+  }
+  
+  result += '-';
+  
+  // Last 2 characters are letters
+  for (let i = 0; i < 2; i++) {
+    result += chars.charAt(Math.floor(Math.random() * 26));
+  }
+  
   return result;
+}
+
+// Calculate estimated delivery date (5-7 business days from creation)
+export function getEstimatedDelivery(fromDate: Date): Date {
+  const deliveryDate = new Date(fromDate);
+  // Add 5-7 days
+  const daysToAdd = Math.floor(Math.random() * 3) + 5;
+  deliveryDate.setDate(deliveryDate.getDate() + daysToAdd);
+  return deliveryDate;
 }
