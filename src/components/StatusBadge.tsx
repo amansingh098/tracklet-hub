@@ -1,7 +1,6 @@
 
 import { OrderStatus } from "@/lib/types";
-import { getStatusColor, getStatusLabel } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { cn, getStatusColor, getStatusLabel } from "@/lib/utils";
 
 interface StatusBadgeProps {
   status: OrderStatus;
